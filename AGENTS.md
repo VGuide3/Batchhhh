@@ -13,8 +13,9 @@ Three deliverables in one repo:
 
 - `contracts/` — Solidity (Foundry). The on-chain `BatchDisperser` + `Registry`.
 - `src/` — TypeScript off-chain library (planner, signer, broadcaster, reconciler,
-  invariants, telemetry).
-- `scripts/` + `test/` — reproducible fixtures, a full dry-run demo, and tests.
+  invariants, telemetry) plus a `chain/` I/O port and a `run/` orchestrator.
+- `scripts/` + `test/` — reproducible fixtures, a full dry-run demo, a terminal
+  CLI (bootstrap / sponsor / run / audit / e2e), and tests.
 
 ## Ground truth (verified on-chain)
 
@@ -36,15 +37,43 @@ from `viem/experimental`).
 
 ```bash
 npm run typecheck     # tsc --noEmit
-npm test              # vitest (77 tests)
+npm test              # vitest (93 tests)
 npm run demo          # full off-chain pipeline dry run, all INV-1..INV-11
+npm run audit         # re-derive the reference tx shape and diff it (14 checks)
 npm run fixture       # regenerate contracts/test/fixtures/reference_batch.json
-npm run forge:test    # Foundry (22 tests; fork test skipped without ETH_RPC_URL)
+npm run forge:test    # Foundry (25 tests; fork test skipped without ETH_RPC_URL)
 npm run verify        # typecheck + vitest + fixture + forge
+
+# terminal CLI (local anvil)
+npm run anvil         # anvil --hardfork prague (:8545)
+npm run anvil:bootstrap   # deploy + delegate + fund; writes scenarios/anvil.{json,env}
+npm run sponsor       # inspect: per-source outflow, live balances, gas, sponsor ETH
+npm run run:dry       # plan + sign + simulate, stop before broadcast
+npm run run           # broadcast + reconcile (all 11 invariants)
+npm run e2e           # one command: anvil + bootstrap + sponsor + run + teardown
 ```
 
 Foundry needs `~/.foundry/bin` on `PATH`. `forge test` is hermetic; the fork test
-in `contracts/test/Fork.t.sol` runs only when `ETH_RPC_URL` is set.
+in `contracts/test/Fork.t.sol` runs only when `ETH_RPC_URL` is set. **Unset
+`ETH_RPC_URL` before `forge test`** if you exported it for a local run — the fork test
+will otherwise try to read the reference tx from your anvil and fail.
+
+## Automated pipeline
+
+`src/run/runner.ts` (`runBatch`) drives the whole flow: preflight → plan → nonce
+snapshot + sign authorizations → assemble envelope → simulate → guards → broadcast →
+confirm → reconcile → telemetry. It talks to the node only through `ChainPort`
+(`src/chain/port.ts`); `ViemChainPort` (`src/chain/viemPort.ts`) is the real adapter
+and `test/unit/runner.test.ts` uses an in-memory fake. A **scenario**
+(`src/config/scenario.ts`, `scenarios/anvil.json`) describes the on-chain wiring,
+authorities, records, and fee policy; keys load from `OUTER_SIGNER_KEY` +
+`AUTHORITY_KEYS` (or `AUTHORITY_KEY_i`).
+
+The entry point is called in **root mode via `fallback()`**: the packed payload's
+first 4 bytes are the `0xa9059cbb` magic, which is not a named selector, so the raw
+calldata *is* the batch. This is why the reference calldata is exactly 1156 bytes
+with no ABI wrapper. `executeBatch(bytes32,bytes)` remains the ABI/relayer path. The
+fallback is outer-signer-only (there is no salt to bind a relayer signature to).
 
 ## Layout conventions
 

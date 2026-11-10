@@ -50,6 +50,18 @@ export interface InvariantContext {
   readonly usdtTotal: bigint;
   readonly usdc: Address;
   readonly usdt: Address;
+  /**
+   * Optional plan-derived shape. When present, INV-5/INV-6 assert against it instead
+   * of the reference constants, so the same suite validates any batch shape.
+   */
+  readonly expectedShape?: {
+    readonly recordCount: number;
+    readonly tokenCount: number;
+    readonly sourceCount: number;
+    readonly recipientCount: number;
+    /** Token (lowercase) → expected Σ amount. */
+    readonly totals: Readonly<Record<string, bigint>>;
+  };
 }
 
 export interface InvariantResult {
@@ -100,13 +112,23 @@ export function inv4(d: ReceiptDigest, ctx: InvariantContext): InvariantResult {
   };
 }
 
-/** INV-5: Transfer log count 14; distinct tokens 2; distinct from 8; distinct to 14. */
-export function inv5(d: ReceiptDigest): InvariantResult {
+/** INV-5: Transfer log count and distinct token/from/to cardinalities match the plan. */
+export function inv5(d: ReceiptDigest, ctx?: InvariantContext): InvariantResult {
   const count = d.transfers.length;
   const tokens = new Set(d.transfers.map((t) => getAddress(t.token).toLowerCase()));
   const froms = new Set(d.transfers.map((t) => getAddress(t.from).toLowerCase()));
   const tos = new Set(d.transfers.map((t) => getAddress(t.to).toLowerCase()));
-  const ok = count === 14 && tokens.size === 2 && froms.size === 8 && tos.size === 14;
+  const want = ctx?.expectedShape ?? {
+    recordCount: 14,
+    tokenCount: 2,
+    sourceCount: 8,
+    recipientCount: 14,
+  };
+  const ok =
+    count === want.recordCount &&
+    tokens.size === want.tokenCount &&
+    froms.size === want.sourceCount &&
+    tos.size === want.recipientCount;
   return {
     id: "INV-5",
     ok,
@@ -114,8 +136,21 @@ export function inv5(d: ReceiptDigest): InvariantResult {
   };
 }
 
-/** INV-6: Σ USDC logs === usdcTotal; Σ USDT logs === usdtTotal. */
+/** INV-6: per-token Σ of Transfer logs matches the plan totals. */
 export function inv6(d: ReceiptDigest, ctx: InvariantContext): InvariantResult {
+  if (ctx.expectedShape) {
+    const sums = new Map<string, bigint>();
+    for (const t of d.transfers) {
+      const tok = getAddress(t.token).toLowerCase();
+      sums.set(tok, (sums.get(tok) ?? 0n) + t.amount);
+    }
+    const problems: string[] = [];
+    for (const [tok, expected] of Object.entries(ctx.expectedShape.totals)) {
+      const got = sums.get(tok.toLowerCase()) ?? 0n;
+      if (got !== expected) problems.push(`${tok}: ${got}≠${expected}`);
+    }
+    return { id: "INV-6", ok: problems.length === 0, detail: problems.join("; ") || "ok" };
+  }
   const usdc = getAddress(ctx.usdc).toLowerCase();
   const usdt = getAddress(ctx.usdt).toLowerCase();
   let usdcSum = 0n;
@@ -203,7 +238,7 @@ export function checkAll(d: ReceiptDigest, ctx: InvariantContext): readonly Inva
     inv2(d),
     inv3(d, ctx),
     inv4(d, ctx),
-    inv5(d),
+    inv5(d, ctx),
     inv6(d, ctx),
     inv7(d, ctx),
     inv8(d, ctx),

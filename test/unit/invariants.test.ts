@@ -216,3 +216,70 @@ describe("invariants on a synthetic green receipt", () => {
     expect(inv1({ ...d, status: 0 }).ok).toBe(false);
   });
 });
+
+describe("generalized expectedShape (INV-5/INV-6)", () => {
+  it("validates a non-reference shape when expectedShape is supplied", () => {
+    // Two records, one token, one source — nothing like the reference batch.
+    const records: TransferRecord[] = [
+      {
+        sourceOrdinal: asSourceOrdinal(0),
+        token: USDC,
+        to: getAddress(toHex(0x9000, { size: 20 })),
+        amount: 5n,
+        tag: encodeTag(0),
+      },
+      {
+        sourceOrdinal: asSourceOrdinal(0),
+        token: USDC,
+        to: getAddress(toHex(0x9001, { size: 20 })),
+        amount: 7n,
+        tag: encodeTag(0),
+      },
+    ];
+    const base = ctx(records);
+    const custom: InvariantContext = {
+      ...base,
+      expectedShape: {
+        recordCount: 2,
+        tokenCount: 1,
+        sourceCount: 1,
+        recipientCount: 2,
+        totals: { [USDC.toLowerCase()]: 12n },
+      },
+    };
+    const results = checkAll(goodDigest(records), custom);
+    const shape = results.filter((r) => r.id === "INV-5" || r.id === "INV-6");
+    expect(shape.filter((r) => !r.ok), JSON.stringify(shape)).toHaveLength(0);
+    expect(shape.find((r) => r.id === "INV-5")!.detail).toBe("count=2 tokens=1 from=1 to=2");
+  });
+
+  it("fails INV-5 when the observed shape drifts from expectedShape", () => {
+    const records = makePlan();
+    const drifted: InvariantContext = {
+      ...ctx(records),
+      expectedShape: {
+        recordCount: 99,
+        tokenCount: 2,
+        sourceCount: 8,
+        recipientCount: 14,
+        totals: { [USDC.toLowerCase()]: 23_640n, [USDT.toLowerCase()]: 23_934n },
+      },
+    };
+    expect(inv5(goodDigest(records), drifted).ok).toBe(false);
+  });
+
+  it("fails INV-6 when a token total drifts from expectedShape", () => {
+    const records = makePlan();
+    const drifted: InvariantContext = {
+      ...ctx(records),
+      expectedShape: {
+        recordCount: 14,
+        tokenCount: 2,
+        sourceCount: 8,
+        recipientCount: 14,
+        totals: { [USDC.toLowerCase()]: 1n, [USDT.toLowerCase()]: 23_934n },
+      },
+    };
+    expect(inv6(goodDigest(records), drifted).ok).toBe(false);
+  });
+});

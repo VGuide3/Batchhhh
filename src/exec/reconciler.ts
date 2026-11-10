@@ -17,6 +17,8 @@ import {
   type ReceiptDigest,
   type TransferLog,
 } from "../invariants/invariants.js";
+export type { InvariantContext, InvariantResult, ReceiptDigest } from "../invariants/invariants.js";
+export { checkAll, assertAll } from "../invariants/invariants.js";
 import { keccak256, toHex } from "viem";
 import type { TransferPlan } from "../plan/types.js";
 
@@ -57,6 +59,8 @@ export interface ReconcilerEnv {
   /** Pre/post balances keyed `address → token → balance`, addresses lowercase. */
   readonly balancesBefore: Readonly<Record<string, Readonly<Record<string, bigint>>>>;
   readonly balancesAfter: Readonly<Record<string, Readonly<Record<string, bigint>>>>;
+  /** Optional plan-derived shape passed through to INV-5/INV-6. */
+  readonly expectedShape?: InvariantContext["expectedShape"];
 }
 
 export interface ReconcileResult {
@@ -135,7 +139,7 @@ export function reconcileStrict(
 }
 
 function toInvariantContext(plan: TransferPlan, env: ReconcilerEnv): InvariantContext {
-  return {
+  const base = {
     plan,
     authorities: env.authorities,
     delegationTarget: env.delegationTarget,
@@ -147,6 +151,7 @@ function toInvariantContext(plan: TransferPlan, env: ReconcilerEnv): InvariantCo
     usdcTotal: env.usdcTotal,
     usdtTotal: env.usdtTotal,
   };
+  return env.expectedShape ? { ...base, expectedShape: env.expectedShape } : base;
 }
 
 function topicToAddress(topic: Hex): Address {

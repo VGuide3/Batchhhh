@@ -159,6 +159,46 @@ contract BatchDisperserTest is Test {
         BatchDisperser(ENTRY_POINT).executeBatch(salt, packed);
     }
 
+    /// @dev Raw entry path: the reference sends the packed payload as the whole
+    ///      calldata (no `executeBatch` wrapper), so the 4-byte magic is the selector
+    ///      and dispatch lands in `fallback`. Same outcome, exactly 1156 bytes.
+    function test_RawEntry_FallbackPath_Executes() public {
+        _fundAuthorities(100_000e6, 100_000e6);
+        bytes24 batchId = bytes24(keccak256("batch-raw"));
+        (bytes memory packed,) = _referenceBatch(batchId);
+
+        vm.prank(OUTER_SIGNER);
+        (bool ok,) = ENTRY_POINT.call(packed);
+        assertTrue(ok, "raw fallback call must succeed");
+
+        assertEq(usdc.balanceOf(address(uint160(0x9000))), 3940);
+        assertEq(usdt.balanceOf(address(uint160(0xA007))), 2991);
+    }
+
+    function test_RawEntry_OnlyOuterSigner() public {
+        _fundAuthorities(1e6, 1e6);
+        (bytes memory packed,) = _referenceBatch(bytes24(keccak256("batch-raw2")));
+
+        vm.prank(address(0xDEAD));
+        (bool ok, bytes memory ret) = ENTRY_POINT.call(packed);
+        assertFalse(ok, "raw entry must reject non-signer");
+        assertEq(bytes4(ret), IEIP7702BatchDisperser.NotRoot.selector);
+    }
+
+    function test_RawEntry_ReplayRejected() public {
+        _fundAuthorities(1e6, 1e6);
+        bytes24 batchId = bytes24(keccak256("batch-raw3"));
+        (bytes memory packed,) = _referenceBatch(batchId);
+
+        vm.prank(OUTER_SIGNER);
+        (bool ok,) = ENTRY_POINT.call(packed);
+        assertTrue(ok);
+
+        vm.prank(OUTER_SIGNER);
+        (bool ok2,) = ENTRY_POINT.call(packed);
+        assertFalse(ok2, "replay must revert");
+    }
+
     // ------------------------------------------------------------------
     // Mode discrimination
     // ------------------------------------------------------------------

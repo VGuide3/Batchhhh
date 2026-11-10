@@ -7,12 +7,27 @@
 >
 > ```bash
 > npm install
-> npm run verify      # typecheck + 77 vitest tests + fixture + 22 Foundry tests
-> npm run demo        # full off-chain pipeline; prints all INV-1..INV-11 results
+> npm run verify      # typecheck + 93 vitest tests + fixture + 25 Foundry tests
+> npm run audit       # re-derive the reference tx shape and diff it (14 checks)
+> npm run e2e         # one command: anvil + bootstrap + sponsor report + live run
 > ```
 >
 > Every spec constant is re-verified against the real mainnet reference
 > (`test/fixtures/reference_receipt.json`, `test/unit/reference-audit.test.ts`).
+
+**Terminal workflow.** The system runs end to end from a terminal with no manual
+steps. `npm run e2e` starts a local Anvil (Prague), deploys the registry + impl,
+delegates the entry point and approved source, mints and approves tokens, prints the
+sponsor report, broadcasts a real type-4 batch, verifies all 11 invariants, and tears
+the node down. To drive it step by step:
+
+```bash
+npm run anvil &            # 1. local Prague node on :8545
+npm run anvil:bootstrap    # 2. deploy + delegate + fund; writes scenarios/anvil.json
+npm run sponsor            # 3. who pays: per-source outflow, balances, gas, ETH cost
+npm run run:dry            # 4. plan + sign + simulate, stop before broadcast
+npm run run                # 5. broadcast and reconcile against all invariants
+```
 
 **Reference transaction:** `0x853b3eabf9d1c8b2f47ee8a29870288a94e884a1f3a81d541b550dea7dbe5f38`
 **Derived class:** Coordinated EIP-7702 gas-compacted batch, 14 ERC-20 transfers, 7 authorizations, 1 shared delegation target

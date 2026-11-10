@@ -134,6 +134,45 @@ failure, `gasUsed > 0.9 × gasCap`, authority mismatch, and record-count mismatc
 runs the whole off-chain pipeline and prints every invariant result. The spec's
 `cast run` command is still valid for trace-level inspection.
 
+## Automation layer (terminal-runnable)
+
+Beyond the library, the system ships a full terminal harness. It is "automation
+style": one command per stage, deterministic, and auditable from stdout.
+
+| Concern | Where |
+|---|---|
+| Node I/O boundary | `src/chain/port.ts` (`ChainPort`), `src/chain/viemPort.ts` (`ViemChainPort`) |
+| Scenario + key loading | `src/config/scenario.ts` (`parseScenario`, `loadSigners`) |
+| Orchestrator | `src/run/runner.ts` (`runBatch`) |
+| Local bring-up | `scripts/anvil-bootstrap.ts` |
+| Sponsor/funding inspector | `scripts/sponsor-check.ts` |
+| Runner CLI | `scripts/run.ts` |
+| Reference audit | `scripts/audit.ts` |
+| One-command E2E | `scripts/e2e.ts` |
+
+`runBatch` is transport-agnostic: it depends only on `ChainPort`, so the same flow
+runs against Anvil (`ViemChainPort`) or an in-memory fake (`test/unit/runner.test.ts`)
+with no node. Stages emit typed `RunEvent`s (`PREFLIGHT … DONE`) that the CLI renders.
+
+**Chunked execution.** The flow is deliberately split so each stage is independently
+runnable and inspectable: bring-up (`anvil:bootstrap`) → inspect (`sponsor`) →
+dry-run (`run:dry`) → execute (`run`) → audit (`audit`) → full loop (`e2e`). Nothing
+is hidden behind a single opaque command; `sponsor` answers "how much moves, and who
+pays?" before a single wei is spent.
+
+**Root entry via `fallback()`.** The reference's calldata is exactly 1156 bytes
+because the packed payload *is* the calldata — its first 4 bytes (`0xa9059cbb`) are
+the entry magic, not an ABI selector. `BatchDisperser` therefore implements
+`fallback()` that treats `msg.data` as the batch (outer-signer-only), alongside the
+ABI/relayer `executeBatch(bytes32,bytes)` path. Both share `_executeRoot`.
+
+### Local gas vs. reference gas
+
+The reference used 510676 gas. A local Anvil run uses more (~738k) because every
+account and storage slot is cold on a fresh chain and the mock tokens differ from
+mainnet USDC/USDT. The reference figure is therefore asserted separately — by the gas
+model (`test/unit/gas.test.ts`) and the gated fork test — not by the local run.
+
 ## What is modeled vs. reproduced
 
 The reference transaction cannot be **replayed** byte-for-byte because that needs

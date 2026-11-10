@@ -117,7 +117,23 @@ contract BatchDisperser is IEIP7702BatchDisperser {
         // A relayer (any msg.sender != outerSigner) appends a 65-byte signature to
         // the payload; the signature covers the payload *without* the appended bytes.
         bytes calldata payload = _authorize(salt, packed);
+        _executeRoot(payload);
+    }
 
+    /// @dev Raw entry path. When the entry point's delegated code is invoked with
+    ///      calldata that does not match a named selector, the whole calldata is the
+    ///      packed payload — its first 4 bytes are the entry magic `0xa9059cbb`. This
+    ///      is the path the reference transaction uses, which is why its calldata is
+    ///      exactly 1156 bytes (no `executeBatch` ABI wrapper). Restricted to the
+    ///      outer signer: unlike `executeBatch` there is no salt to bind a relayer
+    ///      signature to.
+    fallback() external {
+        if (msg.sender != outerSigner) revert NotRoot();
+        _executeRoot(msg.data);
+    }
+
+    /// @dev Shared root body: replay guard, per-source dispatch, error bubbling.
+    function _executeRoot(bytes calldata payload) internal {
         (Header memory h, Record[] memory recs) = _decode(payload);
         if (executed[h.batchId]) revert BatchIdReplay(h.batchId);
         executed[h.batchId] = true;
@@ -131,7 +147,7 @@ contract BatchDisperser is IEIP7702BatchDisperser {
             if (slice.length == 0) continue;
 
             (bool ok, bytes memory ret) =
-                src.call(abi.encodeCall(IEIP7702BatchDisperser.executeLeaf, (salt, slice)));
+                src.call(abi.encodeCall(IEIP7702BatchDisperser.executeLeaf, (bytes32(0), slice)));
             if (!ok) _bubble(ret);
         }
 
