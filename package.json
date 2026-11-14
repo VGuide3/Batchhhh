@@ -1,0 +1,38 @@
+{
+  "name": "eip7702-batch-disperser",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Off-chain planner/simulator/broadcaster/reconciler for EIP-7702 gas-compacted multi-token batch dispersal (SPEC-7702-BATCH-001).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "demo": "tsx scripts/demo.ts",
+    "fixture": "tsx scripts/emit-fixture.ts",
+    "anvil": "anvil --hardfork prague",
+    "anvil:bootstrap": "tsx scripts/anvil-bootstrap.ts",
+    "run": "tsx scripts/run.ts",
+    "run:dry": "tsx scripts/run.ts --dry-run",
+    "sponsor": "tsx scripts/sponsor-check.ts",
+    "audit": "tsx scripts/audit.ts",
+    "e2e": "tsx scripts/e2e.ts",
+    "forge:build": "cd contracts && forge build",
+    "forge:test": "cd contracts && forge test",
+    "forge:test:fork": "cd contracts && forge test --match-path 'test/Fork.t.sol'",
+    "verify": "npm run typecheck && npm run test && npm run fixture && npm run forge:test"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
